@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Embroidery Lab - Realistic Stitch Simulator</title>
+    
+    <!-- SEO & Metadata -->
+    <meta name="description" content="Transform digital images into realistic embroidery simulations with Embroidery Lab. A browser-based WebGL tool for creating thread, stitch, and Aida cloth textures in real-time.">
+    <meta name="keywords" content="embroidery simulator, stitch effect, webgl shader, three.js, image to embroidery, digital stitching, cross stitch generator, pixel art to stitch">
+    <meta name="author" content="Chris Pirillo">
+    <link rel="canonical" href="https://pirillo.com/arcade/embroidery-lab.html">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://pirillo.com/arcade/embroidery-lab.html">
+    <meta property="og:title" content="Embroidery Lab">
+    <meta property="og:description" content="Transform digital images into realistic embroidery simulations in real-time.">
+    <meta property="og:image" content="https://pirillo.com/arcade/images/embroidery-lab.png">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="https://pirillo.com/arcade/embroidery-lab.html">
+    <meta name="twitter:title" content="Embroidery Lab">
+    <meta name="twitter:description" content="Transform digital images into realistic embroidery simulations in real-time.">
+    <meta name="twitter:image" content="https://pirillo.com/arcade/images/embroidery-lab.png">
+    <meta name="twitter:creator" content="@ChrisPirillo">
+
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-1CQ4D3VQ3L"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-1CQ4D3VQ3L');
+    </script>
+
+    <!-- Performance: Preconnect & Fonts -->
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Embroidery Lab",
+      "url": "https://pirillo.com/arcade/embroidery-lab.html",
+      "description": "A WebGL-based tool that simulates realistic embroidery stitches and fabric textures from uploaded images.",
+      "applicationCategory": "MultimediaApplication",
+      "operatingSystem": "Any",
+      "author": {
+        "@type": "Person",
+        "name": "Chris Pirillo",
+        "url": "https://chris.pirillo.com/"
+      },
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
+
+    <!-- Dependencies -->
+    <!-- REMOVED defer: Script logic requires THREE to be available immediately for global variables -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        /* CSS Variables & Base Styles */
+        :root {
+            --glass-bg: rgba(10, 10, 10, 0.85);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --accent: #ff4747;
+            --accent-hover: #ff5f5f;
+            --text-main: #ededed;
+            --text-muted: #888888;
+        }
+
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #050505; 
+            font-family: 'Inter', system-ui, -apple-system, sans-serif; 
+            color: var(--text-main);
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        
+        canvas { display: block; cursor: grab; outline: none; }
+        canvas:active { cursor: grabbing; }
+
+        /* --- UI COMPONENTS --- */
+
+        /* Main Container for Toggle + Panel */
+        #ui-container {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            z-index: 50;
+        }
+
+        /* The Toggle Button */
+        .panel-toggle {
+            width: 44px;
+            height: 44px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(12px);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            color: var(--text-main);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 60;
+        }
+
+        .panel-toggle:hover { 
+            background: rgba(30, 30, 30, 0.9); 
+            transform: scale(1.05);
+        }
+        
+        /* Icon rotation state */
+        .panel-toggle svg {
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .panel-open .panel-toggle svg {
+            transform: rotate(45deg); /* Turns the + into an X */
+        }
+        .panel-open .panel-toggle {
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* Settings Panel */
+        .panel {
+            width: 280px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+            opacity: 0;
+            transform: scale(0.95) translateY(-10px);
+            transform-origin: top left;
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            margin-top: 54px; /* Space for the toggle */
+        }
+
+        .panel-open .panel {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            pointer-events: auto;
+        }
+
+        /* Header */
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        /* Semantic upgrade: This class now applies to an H1 */
+        .header-title {
+            font-weight: 600;
+            font-size: 14px;
+            letter-spacing: -0.01em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0; /* Override default H1 margins */
+        }
+
+        /* Help Icon inside Header */
+        .help-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            cursor: pointer;
+            color: var(--text-muted);
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+        .help-icon:hover {
+            color: var(--text-main);
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.1);
+        }
+
+        /* Controls */
+        .control-group { margin-bottom: 18px; }
+        
+        .label-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            letter-spacing: 0.02em;
+        }
+        .label-row span:last-child { color: var(--text-main); font-variant-numeric: tabular-nums; }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+            margin: 0;
+        }
+        input[type=range]:focus { outline: none; }
+        
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 14px;
+            width: 14px;
+            border-radius: 50%;
+            background: var(--text-main);
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -5px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+            transition: transform 0.1s;
+        }
+        input[type=range]:active::-webkit-slider-thumb { transform: scale(1.2); }
+        
+        /* Buttons */
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 24px; }
+        
+        .btn {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: var(--text-main);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .btn:hover { background: rgba(255,255,255,0.1); }
+        .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+        .btn.primary:hover { background: var(--accent-hover); }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+        
+        .modal-content {
+            background: #0a0a0a;
+            border: 1px solid rgba(255,255,255,0.15);
+            width: 90%;
+            max-width: 420px;
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+            transform: scale(0.95);
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+        }
+        .modal-overlay.active .modal-content { transform: scale(1); }
+
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 5px;
+            transition: color 0.2s;
+        }
+        .modal-close:hover { color: var(--text-main); }
+
+        .modal-title { font-size: 18px; font-weight: 600; margin-bottom: 12px; color: #fff; }
+        .modal-text { font-size: 13px; line-height: 1.6; color: #aaa; margin-bottom: 24px; }
+        .instruction-box {
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 24px;
+            font-size: 12px;
+            color: var(--text-main);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .link-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+        .link-list a {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            text-decoration: none;
+            color: var(--text-main);
+            background: rgba(255,255,255,0.03);
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.05);
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .link-list a:hover {
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.15);
+            transform: translateX(2px);
+        }
+
+        /* Drop Overlay */
+        #drop-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 71, 71, 0.1);
+            backdrop-filter: blur(4px);
+            border: 4px dashed var(--accent);
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent);
+            font-size: 24px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Drag Drop Overlay -->
+<div id="drop-overlay">Drop Image Here</div>
+
+<!-- UI Container: Using <aside> for semantic value (Toolbox) -->
+<aside id="ui-container" class="panel-open" aria-label="Controls"> <!-- Default Open -->
+    
+    <!-- Circular Toggle -->
+    <button class="panel-toggle" id="togglePanel" title="Toggle Settings" aria-label="Toggle Settings Menu">
+        <!-- Simple Plus Icon that rotates to X -->
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+    </button>
+
+    <!-- Settings Panel -->
+    <div class="panel" id="settingsPanel">
+        <header class="panel-header">
+            <!-- H1 for SEO hierarchy, styled to match original div -->
+            <h1 class="header-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle></svg>
+                <span>Embroidery Lab</span>
+            </h1>
+            
+            <!-- Help Icon (Inside Header) -->
+            <div class="help-icon" id="helpBtn" title="About & Instructions" role="button" aria-label="About Embroidery Lab">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+            </div>
+        </header>
+        
+        <!-- Controls -->
+        <div class="control-group">
+            <div class="label-row"><label for="brightness">Brightness</label><span id="brightnessVal">1.00</span></div>
+            <input type="range" id="brightness" min="0.0" max="2.0" step="0.01" value="1.0" aria-valuemin="0.0" aria-valuemax="2.0">
+        </div>
+
+        <div class="control-group">
+            <div class="label-row"><label for="contrast">Contrast</label><span id="contrastVal">1.00</span></div>
+            <input type="range" id="contrast" min="0.0" max="2.0" step="0.01" value="1.0" aria-valuemin="0.0" aria-valuemax="2.0">
+        </div>
+
+        <div class="control-group">
+            <div class="label-row"><label for="saturation">Saturation</label><span id="saturationVal">1.00</span></div>
+            <input type="range" id="saturation" min="0.0" max="2.0" step="0.01" value="1.0" aria-valuemin="0.0" aria-valuemax="2.0">
+        </div>
+
+        <div class="control-group">
+            <div class="label-row"><label for="imageScale">Image Zoom</label><span id="imageScaleVal">0.70x</span></div>
+            <input type="range" id="imageScale" min="0.1" max="5.0" step="0.01" value="0.7" aria-valuemin="0.1" aria-valuemax="5.0">
+        </div>
+
+        <div class="control-group">
+            <div class="label-row"><label for="gridScale">Aida Count (Grid)</label><span id="gridScaleVal">0.75x</span></div>
+            <input type="range" id="gridScale" min="0.5" max="1.50" step="0.01" value="0.75" aria-valuemin="0.5" aria-valuemax="1.5">
+        </div>
+
+        <div class="btn-grid">
+            <button id="uploadBtn" class="btn">Load Image</button>
+            <button id="exportBtn" class="btn primary">Export</button>
+        </div>
+        <input type="file" id="fileInput" style="display:none" accept="image/*" aria-label="Upload Image">
+    </div>
+</aside>
+
+<!-- Info Modal -->
+<section class="modal-overlay" id="infoModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-content">
+        <div class="modal-close" id="closeModal" role="button" aria-label="Close Modal">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </div>
+        
+        <h2 class="modal-title" id="modalTitle">About Embroidery Lab</h2>
+        
+        <div class="instruction-box">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            <div>
+                <strong>How to use:</strong><br>
+                Drag & drop any image to load it.<br>
+                Scroll to zoom. Drag to pan.
+            </div>
+        </div>
+
+        <div class="modal-text">
+            This tool converts images into realistic embroidery simulations. Adjust thread brightness, weave density (Aida count), and stitch tightness in real-time.
+        </div>
+        
+        <ul class="link-list">
+            <li>
+                <a href="https://pirillo.com/arcade/" target="_blank" rel="noopener">
+                    <span>More Apps</span>
+                    <span style="opacity:0.5" aria-hidden="true">→</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://chris.pirillo.com/" target="_blank" rel="noopener">
+                    <span>Follow Chris</span>
+                    <span style="opacity:0.5" aria-hidden="true">→</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://ctrlaltcreate.live/" target="_blank" rel="noopener">
+                    <span>Learn More</span>
+                    <span style="opacity:0.5" aria-hidden="true">→</span>
+                </a>
+            </li>
+        </ul>
+    </div>
+</section>
+
+<!-- Shader Logic -->
+<script id="vertexShader" type="x-shader/x-vertex">
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+</script>
+
+<script id="fragmentShader" type="x-shader/x-fragment">
+    uniform sampler2D tDiffuse;
+    uniform vec2 resolution;
+    uniform float gridScale;
+    uniform float imageScale;
+    uniform float brightness;
+    uniform float contrast;
+    uniform float saturation;
+    uniform float imageAspect;
+    uniform vec2 offset;
+    varying vec2 vUv;
+
+    float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+    }
+
+    float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        float a = hash(i);
+        float b = hash(i + vec2(1.0, 0.0));
+        float c = hash(i + vec2(0.0, 1.0));
+        float d = hash(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+    }
+
+    vec3 applyAdjustments(vec3 color) {
+        color *= brightness;
+        color = (color - 0.5) * contrast + 0.5;
+        float gray = dot(color, vec3(0.299, 0.587, 0.114));
+        color = mix(vec3(gray), color, saturation);
+        return clamp(color, 0.0, 1.0);
+    }
+
+    void main() {
+        float aspect = resolution.x / resolution.y;
+        vec2 uv = (vUv - 0.5) * vec2(aspect, 1.0) + 0.5;
+
+        // --- HOOP FRAME ---
+        float dHoop = distance(uv, vec2(0.5));
+        
+        if (dHoop > 0.485) { 
+            gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0); 
+            return; 
+        }
+
+        // --- GRID / CLOTH LOGIC ---
+        float baseRows = 80.0 * gridScale;
+        vec2 centeredUv = (uv - 0.5);
+        vec2 jitter = vec2(noise(uv * 100.0), noise(uv * 100.0 + 1.2)) * 0.0003;
+        vec2 gridCoordRaw = (centeredUv + jitter) * baseRows;
+        vec2 cellId = floor(gridCoordRaw);
+        vec2 cellUv = fract(gridCoordRaw);
+
+        // Frame Shading
+        if (dHoop > 0.45) { 
+            float frameT = (dHoop - 0.45) / (0.485 - 0.45);
+            vec3 frameColor = mix(vec3(0.12, 0.06, 0.02), vec3(0.38, 0.24, 0.15), frameT);
+            float grain = noise(uv * vec2(1.0, 80.0) * 3.0);
+            frameColor *= 0.96 + 0.04 * grain;
+            frameColor += smoothstep(0.85, 1.0, frameT) * 0.2;
+            frameColor -= smoothstep(0.15, 0.0, frameT) * 0.35;
+            gl_FragColor = vec4(frameColor, 1.0);
+            return; 
+        }
+
+        // --- AIDA CLOTH MODEL ---
+        vec3 clothBase = vec3(0.97, 0.95, 0.91);
+        float fiberH = smoothstep(0.0, 0.6, abs(sin(cellUv.y * 3.1415))); 
+        float fiberV = smoothstep(0.0, 0.6, abs(sin(cellUv.x * 3.1415)));
+        float weave = mix(0.96, 1.0, fiberH * fiberV);
+        float fuzz = noise(gridCoordRaw * 150.0) * 0.03;
+        float cornerGaps = pow(smoothstep(0.35, 0.5, abs(cellUv.x - 0.5)) * smoothstep(0.35, 0.5, abs(cellUv.y - 0.5)), 2.0);
+        vec3 clothColor = clothBase * weave - fuzz;
+        clothColor = mix(clothColor, clothColor * 0.55, cornerGaps);
+
+        float rimShadow = smoothstep(0.45, 0.42, dHoop);
+        clothColor *= mix(0.8, 1.0, rimShadow);
+
+        // --- IMAGE SAMPLING ---
+        vec2 worldCellCenter = (cellId + 0.5) / baseRows;
+        vec2 sampleWorldUv = worldCellCenter / imageScale - offset;
+        
+        vec2 correctedUv = sampleWorldUv;
+        if (imageAspect > 1.0) correctedUv.y *= imageAspect;
+        else correctedUv.x /= imageAspect;
+        vec2 sampleUv = correctedUv + 0.5;
+        
+        bool inBounds = sampleUv.x >= 0.0 && sampleUv.x <= 1.0 && sampleUv.y >= 0.0 && sampleUv.y <= 1.0;
+        vec4 texSample = inBounds ? texture2D(tDiffuse, sampleUv) : vec4(0.0);
+        
+        bool isStitch = (texSample.a > 0.1); 
+        vec3 threadBase = applyAdjustments(texSample.rgb);
+        
+        if (!isStitch) {
+            gl_FragColor = vec4(clothColor, 1.0);
+            return;
+        }
+
+        // --- STITCH MODEL ---
+        float thickness = 0.18;
+        float d1 = abs(cellUv.x - cellUv.y);
+        float s1 = smoothstep(thickness, thickness * 0.5, d1);
+        float d2 = abs(cellUv.x - (1.0 - cellUv.y));
+        float s2 = smoothstep(thickness, thickness * 0.5, d2);
+
+        float vShift = (hash(cellId) - 0.5) * 0.03;
+        vec3 finalBase = clamp(threadBase + vShift, 0.0, 1.0);
+        float vol1 = 1.0 - (d1 / thickness);
+        float vol2 = 1.0 - (d2 / thickness);
+        float fiberDetail = hash(cellId + floor(cellUv * 50.0)) * 0.02;
+
+        vec3 finalColor;
+        if (s2 > 0.01) {
+            float shadow = (s1 > 0.0) ? 0.78 : 1.0;
+            finalColor = finalBase * (0.85 + vol2 * 0.32 + fiberDetail) * shadow;
+        } else if (s1 > 0.01) {
+            finalColor = finalBase * (0.75 + vol1 * 0.32 + fiberDetail);
+        } else {
+            finalColor = clothColor;
+        }
+
+        gl_FragColor = vec4(mix(clothColor, finalColor, max(s1, s2)), 1.0);
+    }
+</script>
+
+<script>
+    let scene, camera, renderer, material;
+    const offset = new THREE.Vector2(0, 0);
+    const params = {
+        gridScale: 0.75,
+        imageScale: 0.7,
+        brightness: 1.0,
+        contrast: 1.0,
+        saturation: 1.0,
+        imageAspect: 1.0
+    };
+
+    function createDefaultTexture() {
+        const size = 512;
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0,0,size,size);
+        ctx.fillStyle = '#111';
+        ctx.beginPath(); ctx.ellipse(256, 300, 180, 80, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.ellipse(250, 315, 140, 35, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#111';
+        ctx.beginPath(); ctx.moveTo(200, 280); ctx.lineTo(256, 140); ctx.lineTo(312, 280); ctx.fill();
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.minFilter = tex.magFilter = THREE.NearestFilter;
+        return tex;
+    }
+
+    function init() {
+        scene = new THREE.Scene();
+        camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        renderer = new THREE.WebGLRenderer({ 
+            antialias: true, 
+            alpha: true,
+            preserveDrawingBuffer: true 
+        });
+        renderer.setClearColor(0x000000, 0);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        material = new THREE.ShaderMaterial({
+            uniforms: {
+                tDiffuse: { value: createDefaultTexture() },
+                resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                gridScale: { value: params.gridScale },
+                imageScale: { value: params.imageScale },
+                brightness: { value: params.brightness },
+                contrast: { value: params.contrast },
+                saturation: { value: params.saturation },
+                imageAspect: { value: params.imageAspect },
+                offset: { value: offset }
+            },
+            vertexShader: document.getElementById('vertexShader').textContent,
+            fragmentShader: document.getElementById('fragmentShader').textContent,
+            transparent: true
+        });
+
+        scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
+        setupUI();
+        setupDragAndDrop();
+        animate();
+    }
+
+    function loadImage(file) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const img = new Image();
+            img.onload = () => {
+                params.imageAspect = img.width / img.height;
+                material.uniforms.imageAspect.value = params.imageAspect;
+                const tex = new THREE.Texture(img);
+                tex.minFilter = tex.magFilter = THREE.NearestFilter;
+                tex.needsUpdate = true;
+                material.uniforms.tDiffuse.value = tex;
+                offset.set(0,0);
+                material.uniforms.offset.value.copy(offset);
+            };
+            img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function setupDragAndDrop() {
+        const overlay = document.getElementById('drop-overlay');
+        window.addEventListener('dragenter', (e) => { e.preventDefault(); overlay.style.display = 'flex'; });
+        window.addEventListener('dragover', (e) => { e.preventDefault(); overlay.style.display = 'flex'; });
+        window.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            if (e.relatedTarget === null || e.relatedTarget.nodeName === 'HTML') overlay.style.display = 'none';
+        });
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            overlay.style.display = 'none';
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) loadImage(file);
+        });
+    }
+
+    function setupUI() {
+        // --- Panel Toggling ---
+        const container = document.getElementById('ui-container');
+        const toggle = document.getElementById('togglePanel');
+        
+        toggle.onclick = () => {
+            container.classList.toggle('panel-open');
+        };
+
+        // --- Controls Wiring ---
+        const update = (id, key, suffix = "") => {
+            const el = document.getElementById(id);
+            el.oninput = (e) => {
+                params[key] = parseFloat(e.target.value);
+                material.uniforms[key].value = params[key];
+                document.getElementById(id + 'Val').textContent = params[key].toFixed(2) + suffix;
+            };
+        };
+
+        update('gridScale', 'gridScale', 'x');
+        update('imageScale', 'imageScale', 'x');
+        update('brightness', 'brightness');
+        update('contrast', 'contrast');
+        update('saturation', 'saturation');
+
+        // --- Canvas Interactions (Pan/Zoom) ---
+        let isDragging = false;
+        let start = { x: 0, y: 0 };
+        window.addEventListener('mousedown', (e) => { 
+            if(e.target.tagName === 'CANVAS') { isDragging = true; start = { x: e.clientX, y: e.clientY }; }
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const dx = (e.clientX - start.x) / window.innerWidth;
+            const dy = (e.clientY - start.y) / window.innerHeight;
+            const aspect = window.innerWidth / window.innerHeight;
+            offset.x += (dx * aspect) / params.imageScale;
+            offset.y -= dy / params.imageScale;
+            material.uniforms.offset.value.copy(offset);
+            start = { x: e.clientX, y: e.clientY };
+        });
+        window.addEventListener('mouseup', () => isDragging = false);
+        window.addEventListener('wheel', (e) => {
+            params.imageScale -= e.deltaY * 0.001 * params.imageScale;
+            params.imageScale = Math.max(0.1, params.imageScale);
+            material.uniforms.imageScale.value = params.imageScale;
+            document.getElementById('imageScaleVal').textContent = params.imageScale.toFixed(2) + 'x';
+            document.getElementById('imageScale').value = params.imageScale;
+        }, { passive: true });
+
+        // --- File & Export ---
+        document.getElementById('uploadBtn').onclick = () => document.getElementById('fileInput').click();
+        document.getElementById('fileInput').onchange = (e) => loadImage(e.target.files[0]);
+        document.getElementById('exportBtn').onclick = () => {
+            renderer.render(scene, camera);
+            const link = document.createElement('a');
+            link.download = `stitch-${Date.now()}.png`;
+            link.href = renderer.domElement.toDataURL('image/png');
+            link.click();
+        };
+
+        // --- Modal Logic ---
+        const modal = document.getElementById('infoModal');
+        const openModal = () => modal.classList.add('active');
+        const closeModal = () => modal.classList.remove('active');
+
+        document.getElementById('helpBtn').onclick = openModal;
+        document.getElementById('closeModal').onclick = closeModal;
+        
+        // Close on background click
+        modal.onclick = (e) => {
+            if (e.target === modal) closeModal();
+        };
+
+        // Close on ESC
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (modal.classList.contains('active')) {
+                    closeModal();
+                } else if (container.classList.contains('panel-open')) {
+                    container.classList.remove('panel-open');
+                }
+            }
+        });
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    });
+
+    window.onload = init;
+</script>
+</body>
+</html>
